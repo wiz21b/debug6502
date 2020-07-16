@@ -50,11 +50,15 @@ def smart_step( cpu, step_over=False):
 def parse_report( fname = "report.txt"):
     # We handle only ACME 0.96.4 reports
 
+    # regex matching the beginning of an interesting line
+    # (ie a line with some binary data attached to it)
     BEGIN_RE = re.compile( r"^\s+([0-9]+)\s+([0-9a-f]+)\s.*$")
 
     LABEL_RE = re.compile( r"^\s+([0-9]+)\s+([0-9a-f]+)\s+([0-9a-f]+)\s+([^\s]+):.*$")
 
     ZP_RE = re.compile( r"^\s+[0-9]+\s+([^\s]+)\s*=\s*(\$?[0-9A-Fa-f]+).*$")
+
+    OPCODE_RE = re.compile( r"^\s+([0-9]+)\s+([0-9a-f]+)\s([0-9a-f]{2}).*$")
     lines_addr = dict()
     lines = []
 
@@ -64,6 +68,8 @@ def parse_report( fname = "report.txt"):
     locations = []
     default_pc = DEFAULT_PC
     first_star = False
+
+    cpu = CPU()
 
     with open(fname,"r") as fin:
         for line in fin.readlines():
@@ -92,6 +98,7 @@ def parse_report( fname = "report.txt"):
                     #print(f"{last_data_label} at {addr:X}")
                     locations.append( (last_data_label, addr, 1) )
 
+            # Heuristic to find EQU's of ZeroPAge addresses
             m = ZP_RE.match(line)
             if m:
                 label, value = m.groups()
@@ -106,6 +113,16 @@ def parse_report( fname = "report.txt"):
                 elif not first_star:
                     default_pc = value
                     first_star = True
+
+            m = OPCODE_RE.match(line)
+            if m:
+                opcode = int(m.groups()[2],16)
+                print(line)
+                print( opcode)
+                cc=cpu.opcode_cycles[ opcode]
+                lines[-1] = f"{cc:d} | {lines[-1]}"
+            else:
+                lines[-1] = f"  | {lines[-1]}"
 
     return lines, lines_addr, locations, default_pc
 
@@ -148,7 +165,10 @@ def display_source( lines, cpu, locations, pc_start):
         pc = cpu.r.pc
         c = cpu
 
-        status_line = "PC=${:04X} A:${:02X},{:03d} X:${:02X},{:03d} Y:${:02X},{:03d} Flags:{} opcode:{:X}".format( pc, c.r.a, c.r.a, c.r.x, c.r.x, c.r.y, c.r.y, flags6502( cpu), cpu.mmu.read( pc))
+        opcode = cpu.mmu.read( pc)
+        cc = cpu.opcode_cycles[opcode]
+
+        status_line = "PC=${:04X} A:${:02X},{:03d} X:${:02X},{:03d} Y:${:02X},{:03d} Flags:{} opcode:{:X} c:{}".format( pc, c.r.a, c.r.a, c.r.x, c.r.x, c.r.y, c.r.y, flags6502( cpu), opcode,cc)
         stdscr.addstr(0,0, status_line + " " *(max_x - len(status_line)), curses.color_pair(1))
 
 

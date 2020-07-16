@@ -90,7 +90,9 @@ class CPU:
 
     def reset(self, pc = 0):
         self.r.reset( pc)
-        self.mmu.reset()
+
+        if self.mmu:
+            self.mmu.reset()
 
         self.running = True
 
@@ -593,6 +595,12 @@ class CPU:
 
         def f_target(target):
             return target
+
+        self.opcode_cycles = [None]*0x100
+        for op, atype, addrs in self._ops:
+            for a, cc, opcodes, target in addrs:
+                for opcode in opcodes:
+                    self.opcode_cycles[ opcode] = cc
 
         self.ops = [None]*0x100
 
