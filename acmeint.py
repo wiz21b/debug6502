@@ -171,8 +171,8 @@ def display_source( lines, cpu, locations, pc_start):
             if line.cycle_mark and line.cycles:
                 cycles_count += line.cycles
 
-            if line.cycle_mark and cycles_count > 0:
-                ctext = f"{cycles_count:3d}"
+            if line.cycle_mark:
+                ctext = f"{line.cycle_mark:3d}"
             else:
                 ctext = "   "
             text = "{}|{}|{}".format(line.cycles or " ", ctext, line.source[0:max_x-1])
@@ -312,13 +312,16 @@ def display_source( lines, cpu, locations, pc_start):
 
 
             ranges = split_cycles_command( input_line, lines)
+            total = 0
             if ranges:
                 for line in lines:
                     line.cycle_mark = False
 
                 for p in ranges:
                     for i in range( p[0], p[1]+1):
-                        lines[i].cycle_mark = True
+                        if lines[i].cycles:
+                            total += lines[i].cycles
+                        lines[i].cycle_mark = total
             else:
                 error = f"Don't understand {input_line}"
 
