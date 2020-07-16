@@ -5,6 +5,11 @@ import re
 from py65emu.cpu import CPU
 from py65emu.mmu import MMU
 
+class LineInfo:
+    def __init__( self, cycles, label, source):
+        self.cycles, self.label, self.source = cycles, label, source
+        self.cycle_mark = False
+
 DEFAULT_PC = 0x800
 
 
@@ -54,7 +59,7 @@ def parse_report( fname = "report.txt"):
     # (ie a line with some binary data attached to it)
     BEGIN_RE = re.compile( r"^\s+([0-9]+)\s+([0-9a-f]+)\s.*$")
 
-    LABEL_RE = re.compile( r"^\s+([0-9]+)\s+([0-9a-f]+)\s+([0-9a-f]+)\s+([^\s]+):.*$")
+    LABEL_RE = re.compile( r"^\s+([0-9]+)\s+([0-9a-f]+\s+[0-9a-f]+)?\s+([^\s]+):.*$")
 
     ZP_RE = re.compile( r"^\s+[0-9]+\s+([^\s]+)\s*=\s*(\$?[0-9A-Fa-f]+).*$")
 
@@ -72,19 +77,28 @@ def parse_report( fname = "report.txt"):
     cpu = CPU()
 
     with open(fname,"r") as fin:
-        for line in fin.readlines():
+        fiter = fin.readlines()[2:]
+        for line in fiter:
             line = line.rstrip().replace("\t"," "*8)
-            lines.append( line)
+
+            source = line
+            source_label = None
+            cycles = None
+
+            if ";" in line:
+                line = line[0:line.index(';')]
 
             m = BEGIN_RE.match(line)
             if m:
                 line_n = m.groups()[0]
                 addr = int( m.groups()[1], 16)
-                lines_addr[addr] = len(lines)-1
+                lines_addr[addr] = len(lines)
 
             m = LABEL_RE.match(line)
             if m:
-                last_label = m.groups()[3]
+                #print("label")
+                source_label = last_label = m.groups()[2]
+                #print( source_label)
 
             if "!word" in line:
                 if last_data_label != last_label:
@@ -117,12 +131,9 @@ def parse_report( fname = "report.txt"):
             m = OPCODE_RE.match(line)
             if m:
                 opcode = int(m.groups()[2],16)
-                print(line)
-                print( opcode)
-                cc=cpu.opcode_cycles[ opcode]
-                lines[-1] = f"{cc:d} | {lines[-1]}"
-            else:
-                lines[-1] = f"  | {lines[-1]}"
+                cycles = cpu.opcode_cycles[ opcode]
+
+            lines.append( LineInfo(cycles, source_label, source) )
 
     return lines, lines_addr, locations, default_pc
 
@@ -132,6 +143,7 @@ def display_source( lines, cpu, locations, pc_start):
     max_y, max_x = stdscr.getmaxyx()
 
     stepped_cpu = False
+    error = None
 
     while True:
 
@@ -145,10 +157,29 @@ def display_source( lines, cpu, locations, pc_start):
 
 
         stdscr.clear()
+
+        old_cycle_mark = False
+        cycles_count = 0
         for i in range(max_y-1):
             line_nr = i+current_offset
 
-            text = lines[line_nr][0:max_x-1]
+            line = lines[line_nr]
+
+            if line.cycle_mark and not old_cycle_mark:
+                old_cycle_mark = True
+
+            if line.cycle_mark and line.cycles:
+                cycles_count += line.cycles
+
+            if line.cycle_mark and cycles_count > 0:
+                ctext = f"{cycles_count:3d}"
+            else:
+                ctext = "   "
+            text = "{}|{}|{}".format(line.cycles or " ", ctext, line.source[0:max_x-1])
+
+            if not line.cycle_mark:
+                old_cycle_mark = False
+                cycles_count = 0
 
             if line_nr == highlighted:
                 highlight = curses.A_REVERSE
@@ -162,14 +193,16 @@ def display_source( lines, cpu, locations, pc_start):
             else:
                 stdscr.addstr(i+1, 0, text, highlight)
 
-        pc = cpu.r.pc
-        c = cpu
-
-        opcode = cpu.mmu.read( pc)
-        cc = cpu.opcode_cycles[opcode]
-
-        status_line = "PC=${:04X} A:${:02X},{:03d} X:${:02X},{:03d} Y:${:02X},{:03d} Flags:{} opcode:{:X} c:{}".format( pc, c.r.a, c.r.a, c.r.x, c.r.x, c.r.y, c.r.y, flags6502( cpu), opcode,cc)
-        stdscr.addstr(0,0, status_line + " " *(max_x - len(status_line)), curses.color_pair(1))
+        if not error:
+            pc = cpu.r.pc
+            c = cpu
+            opcode = cpu.mmu.read( pc)
+            cc = cpu.opcode_cycles[opcode]
+            status_line = "PC=${:04X} A:${:02X},{:03d} X:${:02X},{:03d} Y:${:02X},{:03d} Flags:{} opcode:{:X} c:{}".format( pc, c.r.a, c.r.a, c.r.x, c.r.x, c.r.y, c.r.y, flags6502( cpu), opcode,cc)
+            stdscr.addstr(0,0, status_line + " " *(max_x - len(status_line)), curses.color_pair(1))
+        else:
+            stdscr.addstr(0,0, error + " " *(max_x - len(error)), curses.color_pair(2))
+            error = None
 
 
         if locations:
@@ -222,6 +255,75 @@ def display_source( lines, cpu, locations, pc_start):
             stepped_cpu = True
         elif k == ord('q'):
             return False
+        elif k == ord('c'):
+            from curses.textpad import Textbox
+
+            def locate_line( s, lines):
+                if s is None:
+                    return None
+
+                try:
+                    return int( s) - 1
+                except ValueError as ex:
+                    for i,line in enumerate(lines):
+                        if line.label and s in line.label:
+                            return i
+                    return None
+
+
+            def done_on_enter( char):
+                if char in [10, 13, curses.KEY_ENTER, curses.ascii.BEL]:
+                    return curses.ascii.BEL
+                return char
+
+
+            def split_cycles_command( s, lines):
+                pairs = [p.split('-') for p in s.split(',')]
+
+                npairs = []
+                for p in pairs:
+                    if len(p) == 2:
+                        l,r = p[0].strip(), p[1].strip()
+
+                        l = locate_line(l, lines)
+                        r = locate_line(r, lines)
+
+                        if l is not None and r is not None:
+                            npairs.append( (l,r) )
+                        else:
+                            return []
+                    else:
+                        return []
+
+                return npairs
+
+
+            stdscr.addstr(0,0, ">" + " "*(max_x-2))
+            curses.curs_set(True)
+            stdscr.move(0,2)
+            tb = Textbox(stdscr)
+            #tb.stripspaces = True
+            txt = tb.edit( done_on_enter)
+            curses.curs_set(False)
+
+            input_line = txt[2:txt.index('\n')] # Tricky curses !
+
+            #line = "compute_line-y1_smaller"
+
+
+            ranges = split_cycles_command( input_line, lines)
+            if ranges:
+                for line in lines:
+                    line.cycle_mark = False
+
+                for p in ranges:
+                    for i in range( p[0], p[1]+1):
+                        lines[i].cycle_mark = True
+            else:
+                error = f"Don't understand {input_line}"
+
+
+
         elif k == 27: # Esc or Alt
             # Don't wait for another key
             # If it was Alt then curses has already sent the other key
@@ -251,10 +353,15 @@ parser = argparse.ArgumentParser(description="""
 Incorporating py65emu © Jeremy Neiman
 
 In the program, use :
-- space to step one instruction,
-- 'p' to step over
-- ESC to quit.
+- 'space' to step one instruction,
+- 'p' to step over,
 - 'r' to reset at the beginning of the simulation
+- 'c' to define ranges of cycle counting. For example
+  to cycle count from line 20 to 30, hit 'c' then enter
+  '20-30' then enter. Instead of line numbers, you can
+  give labels' names. You can also give several ranges
+  separated by ','.
+- ESC to quit.
 
 This program is super alpha...
 """, formatter_class=argparse.RawTextHelpFormatter)
@@ -271,7 +378,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     lines, lines_addr, locations, source_pc = parse_report( args.report)
-
     #exit()
 
     if source_pc != args.load_address:
@@ -284,6 +390,7 @@ if __name__ == "__main__":
     stdscr = curses.initscr()
     curses.start_color()
     curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)
+    curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_RED)
 
     curses.curs_set(False)
     curses.noecho()
