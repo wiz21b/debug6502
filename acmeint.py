@@ -78,8 +78,10 @@ def parse_report( fname = "report.txt"):
 
     with open(fname,"r") as fin:
         fiter = fin.readlines()[2:]
-        for line in fiter:
+        for real_nr, line in enumerate(fiter):
             line = line.rstrip().replace("\t"," "*8)
+
+            line = "{: 6d}{}".format( real_nr+1, line[6:])
 
             source = line
             source_label = None
