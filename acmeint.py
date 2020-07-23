@@ -149,6 +149,7 @@ def display_source( lines, cpu, locations, pc_start):
 
     while True:
 
+        assert cpu.r.pc in lines_addr, f"{cpu.r.pc:X} not in lines"
 
         highlighted = lines_addr[ cpu.r.pc]
 
@@ -187,6 +188,9 @@ def display_source( lines, cpu, locations, pc_start):
                 highlight = curses.A_REVERSE
             else:
                 highlight = 0
+
+            if len(text) >= max_x-1:
+                text = text[0:max_x-1]
 
             if ';' in text:
                 n = text.index(';')
@@ -391,6 +395,14 @@ if __name__ == "__main__":
         pc = args.load_address
     cpu = init_cpu( args.compiled, pc)
 
+    # print( f"{cpu.r.pc:X}")
+    # cpu.step()
+    # print( f"{cpu.r.pc:X}")
+    # cpu.step()
+    # print( f"{cpu.r.pc:X}")
+    # cpu.step()
+    # print( f"{cpu.r.pc:X}")
+    # exit()
 
     stdscr = curses.initscr()
     curses.start_color()
