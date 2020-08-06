@@ -1,4 +1,4 @@
-# A small 6502 debugger
+# A small assembler 6502 debugger
 
 *(important : part of this code is (c) Jeremy Neiman, see : https://github.com/docmarionum1/py65emu , so the GPL license applies only to my stuff)*
 
