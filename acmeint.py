@@ -608,8 +608,15 @@ This program is super alpha...
 
 parser.add_argument('--report','-r',help="ACME source report (use ACME's -r option)")
 parser.add_argument('--report-ca65','-ca65',nargs=2,metavar=('source','mapfile'),help="CA65 source report and map file (see ca65 --listing and ld65 --mapfile)")
-parser.add_argument('--default-pc','-l',help=f'Load address (default to ${DEFAULT_PC:X})', default=DEFAULT_PC)
+parser.add_argument('--default-pc','-l',help=f'PC value on startup (default to ${DEFAULT_PC:X})', default=DEFAULT_PC)
 parser.add_argument('--load','-d',action='append',nargs='*',metavar=('path','addr'),help=f'Load binary (code or data) file with path at address addr in 6502 RAM. Address can be decimal or hexa ($ or 0x prefix)')
+
+def hex_to_int( s):
+    hexa = s.startswith("$") or s.startswith("0x")
+    if hexa:
+        return int( s.replace("$","").replace("0x",""), 16)
+    else:
+        return int( s)
 
 
 if __name__ == "__main__":
@@ -649,10 +656,14 @@ if __name__ == "__main__":
     else:
         lines, lines_addr, locations, source_pc = parse_report( args.report)
 
-    if source_pc != args.default_pc:
-        pc = source_pc
+    if args.default_pc:
+        pc = hex_to_int( args.default_pc)
+
     else:
-        pc = args.default_pc
+        pc = source_pc
+
+
+    print(f"PC set to ${pc:04X}")
 
     cpu = init_cpu( mem, pc)
 
