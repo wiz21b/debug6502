@@ -280,6 +280,8 @@ def parse_report( fname = "report.txt"):
                 line = line[0:line.index(';')]
 
             m = BEGIN_RE.match(line)
+            addr = None
+
             if m:
                 line_n = m.groups()[0]
                 addr = int( m.groups()[1], 16)
@@ -324,7 +326,9 @@ def parse_report( fname = "report.txt"):
                 opcode = int(m.groups()[2],16)
                 cycles = cpu.opcode_cycles[ opcode]
 
-            lines.append( LineInfo(cycles, source_label, source) )
+            lines.append( LineInfo( addr, cycles, source_label, source) )
+
+            # def __init__( self, address, cycles, label, source):
 
     return lines, lines_addr, locations, default_pc
 
@@ -404,7 +408,7 @@ def display_source( lines, cpu, locations, pc_start):
             c = cpu
             opcode = cpu.mmu.read( pc)
             cc = cpu.opcode_cycles[opcode]
-            status_line = "PC=${:04X} A:${:02X},{:03d} X:${:02X},{:03d} Y:${:02X},{:03d} Flags:{} opcode:{:X} c:{}".format( pc, c.r.a, c.r.a, c.r.x, c.r.x, c.r.y, c.r.y, flags6502( cpu), opcode,cc)
+            status_line = "PC=${:04X} A:${:02X},{:03d} X:${:02X},{:03d} Y:${:02X},{:03d} Flags:{} opcode:{:02X} cycles:{}".format( pc, c.r.a, c.r.a, c.r.x, c.r.x, c.r.y, c.r.y, flags6502( cpu), opcode,cc)
             stdscr.addstr(0,0, status_line + " " *(max_x - len(status_line)), curses.color_pair(1))
         else:
             stdscr.addstr(0,0, error + " " *(max_x - len(error)), curses.color_pair(2))
