@@ -28,7 +28,7 @@ class MMU:
 
     def reset(self):
         """
-        In all writeable blocks reset all values to zero.
+        Reset everything.
         """
 
         for b in self.blocks:
@@ -75,7 +75,7 @@ class MMU:
                 newBlock['memory'][i+valueOffset] = value[i]
 
         elif value is not None:
-            if type(value) == bytes:
+            if type(value) in (bytes, bytearray):
                 # print(f"loading {len(value)} bytes at ${start:04X}")
                 # print(value[0:10])
                 a = value
